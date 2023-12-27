@@ -13,7 +13,6 @@ Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 TickTock = "9ff05d80-102d-5586-aa04-3a8bd1a90d20"
-WaveSpec = "908d4cf6-a6c0-449c-92e4-852c8f288332"
 
 [compat]
 DrWatson = "2.12.0"
