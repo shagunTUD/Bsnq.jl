@@ -1,17 +1,47 @@
+module GWCE
+
 using DrWatson
 @quickactivate "Bsnq.jl"
 
+using Parameters
 using Gridap
 using Printf
 using LineSearches: BackTracking
 using CSV
-using Tables
 using Revise
 using WaveSpec.Constants
+using Tables
+using TickTock
+
+export gwce_setup, GWCE_params
 
 
-function gwce_setup(domX, domY, dx, dy, ha, inletη, inletP,
-    simT, simΔt, outΔt, probesxy, probname)
+function gwce_setup(params)    
+
+    @unpack domX, domY, dx, dy = params    
+    @unpack simT, simΔt, outΔt = params 
+    @unpack probesxy, probname = params
+    @unpack hr, H, ω, k = params
+
+
+    # Water Depth
+    ha(x) = hr
+    # function ha(x)
+    #     if(x[1]<50.0)
+    #         rha = h
+    #     elseif(x[1]>100.0)
+    #         rha = h/2.0
+    #     else
+    #         rha = h - h/2.0*(x[1]-50.0)/50.0
+    #     end
+
+    #     return rha
+    # end
+
+    inletη(x, t::Real) = H/2.0*sin(-ω*t)
+    inletη(t::Real) = x -> inletη(x,t)
+    inletP(x, t::Real) = VectorValue(H/2.0*sin(-ω*t)*ω/k, 0.0)
+    inletP(t::Real) = x -> inletP(x,t)
 
 
     # Generate Cartesian Domain 2DH 
@@ -146,20 +176,21 @@ function gwce_setup(domX, domY, dx, dy, ha, inletη, inletP,
         println("Time : $tval")
         tval = @sprintf("%d",floor(Int64,t0*1000))                
         pvd[t0] = createvtk(Ω,probname*"_$tval"*".vtu",
-            cellfields=["eta"=>ηh, "P"=>ph, "J"=>jh, "h0"=>-h0])
+            cellfields=["eta"=>ηh, "P"=>ph, "J"=>jh, "h0"=>-h0],
+            order=2)
     end
 
 
     # Execute
     outMod = floor(Int64,outΔt/simΔt);
+    tick()
     createpvd(probname, append=true) do pvd    
         cnt=0
-        for (solh, t) in solnht                       
+        for (solh, t) in solnht                            
             cnt = cnt+1
             ηh, jh, ph = solh
             tval = @sprintf("%5.3f",t)                
-            println("Time : $tval")
-            tval = @sprintf("%d",floor(Int64,t*1000))                
+            println("Time : $tval")            
 
             lDa[1] = t
             for ip in 1:numP
@@ -174,51 +205,57 @@ function gwce_setup(domX, domY, dx, dy, ha, inletη, inletP,
             end
             probeDa = vcat(probeDa, lDa);
 
+            println("-x-x-")
+            tock()
+            println()
+            tick()
+
             if(cnt%outMod != 0) 
                 continue
             end
             pvd[t] = createvtk(Ω,probname*"_$tval"*".vtu",
-                cellfields=["eta"=>ηh, "P"=>ph, "J"=>jh, "h0"=>-h0])
+                cellfields=["eta"=>ηh, "P"=>ph, "J"=>jh, "h0"=>-h0],
+                order=2)
         end
     end    
+    tock()
 
     CSV.write(probname*"_probes.csv", Tables.table(probeDa))
 end
 
 
-#
-# Run simulation
-g = 9.81
-T = 10.0; #s
-h = 1.0; #m
-H = 0.05; #m
-L = dispersionRel(h, T)
-k = 2*π/L;
-ω = 2*π/T;
-probname = datadir("sims_202401","gwce_run","gwce")
 
-probesxy = [Point(12.0, 5.0)
-            Point(24.0, 5.0)
-            Point(36.0, 5.0)
-            Point(48.0, 5.0)];
+"""
+Memb_params
 
-# Water Depth
-ha(x) = h
-# function ha(x)
-#     if(x[1]<50.0)
-#         rha = h
-#     elseif(x[1]>100.0)
-#         rha = h/2.0
-#     else
-#         rha = h - h/2.0*(x[1]-50.0)/50.0
-#     end
+Parameters for the VIV.jl module.
+"""
 
-#     return rha
-# end
+@with_kw struct GWCE_params
 
-g1(x, t::Real) = H/2.0*sin(-ω*t)
-g1(t::Real) = x -> g1(x,t)
-g2a(x, t::Real) = VectorValue(H/2.0*sin(-ω*t)*ω/k, 0.0)
-g2a(t::Real) = x -> g2a(x,t)
-gwce_setup((0,300), (0,10), 1.25, 1.25, ha, g1, g2a,
-    80, 0.2, 2, probesxy, probname)
+    domX = (0,300)  
+    domY = (0,10)
+    dx = 2.5
+    dy = 2.5
+
+    simT = 5
+    simΔt = 0.2
+    outΔt = 2
+
+    # Wave parameters
+    hr = 1.0 #water-depth
+    H = 0.05 # wave height
+    ω = 2*π / 10 #T = 10s
+    k = dispersionRelAng(hr, ω; msg=false)
+
+    probname = datadir("sims_202401","gwce_run","gwce")
+
+    # Probes
+    probesxy = [Point(12.0, 5.0)
+        Point(24.0, 5.0)
+        Point(36.0, 5.0)
+        Point(48.0, 5.0)];
+
+end
+
+end 
