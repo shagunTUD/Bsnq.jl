@@ -65,7 +65,7 @@ function case_setup(params)
 
   # Define Test Fnc
   # ---------------------Start---------------------
-  ordη = 2
+  ordη = 1
   reffeη = ReferenceFE(lagrangian, Float64, ordη)
 
   Ψw = TestFESpace(Ω, reffeη, 
@@ -112,9 +112,19 @@ function case_setup(params)
 
   # Weak form    
   # ---------------------Start---------------------
+
+  # Intermediate fncs
+  # Check log_bsnq_v001_math.ipynb for the split of conv term
+  conv2(p, td) = 1.0/td*(∇⋅p) - 1.0/(td*td)*(p⋅∇(td))
+
+
+  # Residual
   res(t, (η, p), (ψη, ψp)) =
     ∫( ∂t(η)*ψη + (∇⋅p)*ψη )dΩ + 
-    ∫( ∂t(p)⋅ψp + g*h*(ψp⋅∇(η)) )dΩ
+    ∫( ∂t(p)⋅ψp + 
+      ψp ⋅ (∇(p)'⋅p) / (h+η) + #convec-part1
+      ψp ⋅ (conv2(p,(h+η)) * p) + #convec-part2
+      g * (h+η) * (ψp⋅∇(η)) )dΩ
 
         
   op_AD = TransientFEOperator(res, X, Y)    
@@ -129,15 +139,14 @@ function case_setup(params)
   
   # Solver setup
   # ---------------------Start---------------------
-  # Linear Solver
-  lin_solver = LUSolver()
-  ode_solver = ThetaMethod(lin_solver, simΔt, 0.5)
+  # # Linear Solver
+  # lin_solver = LUSolver()
+  # ode_solver = ThetaMethod(lin_solver, simΔt, 0.5)
 
-  # # NL Solver    
-  # nls = NLSolver(show_trace=true, 
-  #   method=:newton, linesearch=BackTracking(), iterations=10)
-  # #ode_solver = Newmark(nls, simΔt, 0.5, 0.25)        
-  # ode_solver = GeneralizedAlpha(nls, simΔt, 0.0)    
+  # NL Solver    
+  nls = NLSolver(show_trace=true, 
+    method=:newton, linesearch=BackTracking(), iterations=10)  
+  ode_solver = ThetaMethod(nls, simΔt, 0.5)
   
   solnht = solve(ode_solver, op_AD, x0, t0, simT)    
   # ----------------------End----------------------
@@ -161,7 +170,7 @@ function case_setup(params)
       cnt = cnt+1
       ηh, ph = solh
       tval = @sprintf("%5.3f",t)                
-      println("Time : $tval")                  
+      println("Time : $tval \t Counter : $cnt")                  
 
       println("-x-x-")
       tock()
@@ -194,7 +203,7 @@ Parameters for the VIV.jl module.
   dx = 2.5
   dy = 2.5
 
-  simT = 10
+  simT = 5
   simΔt = 0.2
   outΔt = 1
 
