@@ -14,6 +14,8 @@ using TickTock
 
 export case_setup, default_params
 
+const B = 1/15
+
 
 function case_setup(params)    
 
@@ -23,7 +25,7 @@ function case_setup(params)
   @unpack h0, H, ω, k = params
 
 
-  # Water Depth
+  ## Water Depth
   ha(x) = h0
   # function ha(x)
   #     if(x[1]<50.0)
@@ -43,14 +45,14 @@ function case_setup(params)
   inletP(t::Real) = x -> inletP(x,t)
 
 
-  # Generate Cartesian Domain 2DH 
+  ## Generate Cartesian Domain 2DH 
   domain = (domX[1], domX[2], domY[1], domY[2])
   partition = ( Int((domX[2]-domX[1])/dx), 
     Int((domY[2]-domY[1])/dy))
   model = CartesianDiscreteModel(domain, partition)
 
 
-  # Label sides of the domain
+  ## Label sides of the domain
   labels = get_face_labeling(model)
   add_tag_from_tags!(labels, "inlet", ["tag_7","tag_1","tag_3"])
   add_tag_from_tags!(labels, "outlet", ["tag_8","tag_2","tag_4"])
@@ -58,12 +60,13 @@ function case_setup(params)
   writevtk(model, probname*"_model")
 
 
-  # Domains
+  ## Domains
   Ω = Interior(model)
   Γ = Boundary(model)
+  nΓ = get_normal_vector(Γ)
 
 
-  # Define Test Fnc
+  ## Define Test Fnc
   # ---------------------Start---------------------
   ordη = 1
   reffeη = ReferenceFE(lagrangian, Float64, ordη)
@@ -84,7 +87,7 @@ function case_setup(params)
   # ----------------------End----------------------
 
 
-  # Define Trial Space
+  ## Define Trial Space
   # ---------------------Start---------------------    
   Uw = TrialFESpace(Ψw)    
   
@@ -96,21 +99,21 @@ function case_setup(params)
   g3c(t::Real) = x -> g3c(x,t)
   UP = TransientTrialFESpace(ΨP, [inletP,g3b,g3c])
 
-  Y = MultiFieldFESpace([Ψη, ΨP])
-  X = TransientMultiFieldFESpace([Uη, UP])
+  Y = MultiFieldFESpace([Ψw, Ψη, ΨP])
+  X = TransientMultiFieldFESpace([Uw, Uη, UP])
   #NOTE: Uw is not transient
   # ----------------------End----------------------
 
   
-  # Water depth        
+  ## Water depth        
   h = interpolate_everywhere(ha, FESpace(Ω,reffeη))
   
 
-  # Define measures
+  ## Define measures
   dΩ = Measure(Ω, 2*ordP)
-  
+  dΓ = Measure(Γ, 2*ordP)
 
-  # Weak form    
+  ## Weak form    
   # ---------------------Start---------------------
 
   # Intermediate fncs
@@ -119,25 +122,32 @@ function case_setup(params)
 
 
   # Residual
-  res(t, (η, p), (ψη, ψp)) =
+  res(t, (w, η, p), (ψw, ψη, ψp)) =
+    ∫( w*ψw + ∇(ψw) ⋅ (h*∇(η)) )dΩ +
+    ∫( -ψw * h * ∇(η)⋅nΓ )dΓ +
     ∫( ∂t(η)*ψη + (∇⋅p)*ψη )dΩ + 
     ∫( ∂t(p)⋅ψp + 
       ψp ⋅ (∇(p)'⋅p) / (h+η) + #convec-part1
       ψp ⋅ (conv2(p,(h+η)) * p) + #convec-part2
-      g * (h+η) * (ψp⋅∇(η)) )dΩ
+      g * (h+η) * (ψp⋅∇(η)) )dΩ + 
+    ∫( (B + 1/3) * ( (∇⋅ψp) * h*h * (∇⋅∂t(p)) ) )dΩ + 
+    ∫( -(B + 1/3) * ( ψp * h*h * (∇⋅∂t(p)) ) ⋅ nΓ )dΓ + 
+    ∫( (2*B + 1/2) * ( ψp ⋅ ( h * (∇⋅∂t(p)) * ∇(h) ) ) )dΩ + 
+    ∫( (-1/6) * ( ψp ⋅ (∇(∂t(p))⋅∇(h)) ) )dΩ +
+    ∫( -B*g * ψp ⋅ (h*h*∇(w)) )dΩ
 
         
   op_AD = TransientFEOperator(res, X, Y)    
   # ----------------------End----------------------
 
 
-  # Initial soln
+  ## Initial soln
   t0 = 0.0
   x0 = interpolate_everywhere(
-    [0.0, VectorValue(0.0,0.0)], X(t0))
+    [0.0, 0.0, VectorValue(0.0,0.0)], X(t0))
   
   
-  # Solver setup
+  ## Solver setup
   # ---------------------Start---------------------
   # # Linear Solver
   # lin_solver = LUSolver()
@@ -153,7 +163,7 @@ function case_setup(params)
 
   
   createpvd(probname) do pvd
-    ηh, ph = x0
+    wh, ηh, ph = x0
     tval = @sprintf("%5.3f",t0)                
     println("Time : $tval")
     pvd[t0] = createvtk(Ω,probname*"_$tval"*".vtu",
@@ -161,14 +171,14 @@ function case_setup(params)
   end
 
 
-  # Execute
+  ## Execute
   outMod = floor(Int64,outΔt/simΔt);
   tick()
   createpvd(probname, append=true) do pvd    
     cnt=0
     for (solh, t) in solnht                            
       cnt = cnt+1
-      ηh, ph = solh
+      wh, ηh, ph = solh
       tval = @sprintf("%5.3f",t)                
       println("Time : $tval \t Counter : $cnt")                  
 
