@@ -13,10 +13,17 @@ const to = TimerOutput()
 
 resDir = datadir("sims_202401","bsnq_run","bsnq")
 
-# params = Bsnq2D.default_params( 
-#   probname = resDir,
-#   simT = 20 
-# )
+params = Bsnq2D.default_params( 
+  probname = resDir,
+  simT = 0.8
+)
+
+ha(x) = params.h0
+
+@timeit to "Setup Run" Bsnq2D.case_setup(params, ha)
+
+println("Warmup Done")
+println()
 
 params = Bsnq2D.default_params( 
 
@@ -25,7 +32,7 @@ params = Bsnq2D.default_params(
   dx = 0.2032,
   dy = 0.2032,
 
-  simT = 8,
+  simT = 20,
   simΔt = 0.08,
   outΔt = 0.8,
 
@@ -37,7 +44,19 @@ params = Bsnq2D.default_params(
   probname = resDir
 )
 
-@timeit to "Total Run" Bsnq2D.case_setup(params)
+function haWhalin(x)
+  G = sqrt( x[2] * (6.096-x[2]) )
+
+  if( x[1] ≤ (10.67-G) )
+    return 0.4572
+  elseif( x[1] ≤ (18.29-G) )
+    return 0.4572 + 1/25*(10.67-G-x[1])
+  else
+    return 0.1524
+  end
+end
+
+@timeit to "Total Run" Bsnq2D.case_setup(params, haWhalin)
 
 show(to)
 

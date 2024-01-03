@@ -17,7 +17,7 @@ export case_setup, default_params
 const B = 1/15
 
 
-function case_setup(params)    
+function case_setup(params, ha)    
 
   @unpack domX, domY, dx, dy = params    
   @unpack simT, simΔt, outΔt = params 
@@ -25,19 +25,19 @@ function case_setup(params)
   @unpack h0, H, ω, k = params
 
 
-  ## Water Depth
-  ha(x) = h0
-  # function ha(x)
-  #     if(x[1]<50.0)
-  #         rha = h
-  #     elseif(x[1]>100.0)
-  #         rha = h/2.0
-  #     else
-  #         rha = h - h/2.0*(x[1]-50.0)/50.0
-  #     end
+  # ## Water Depth
+  # ha(x) = h0
+  # # function ha(x)
+  # #     if(x[1]<50.0)
+  # #         rha = h
+  # #     elseif(x[1]>100.0)
+  # #         rha = h/2.0
+  # #     else
+  # #         rha = h - h/2.0*(x[1]-50.0)/50.0
+  # #     end
 
-  #     return rha
-  # end
+  # #     return rha
+  # # end
 
   inletη(x, t::Real) = H/2.0*sin(-ω*t)
   inletη(t::Real) = x -> inletη(x,t)
