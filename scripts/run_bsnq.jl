@@ -1,9 +1,9 @@
+using Revise
 using DrWatson
 @quickactivate "Bsnq"
 
-include(srcdir("bsnq_params.jl"))
+include(srcdir("BsnqParams.jl"))
 
-using Revise
 using Parameters
 using TimerOutputs
 using WaveSpec.Constants
@@ -32,15 +32,15 @@ params = Bsnq2D.default_params(
   dx = 0.2032,
   dy = 0.2032,
 
-  simT = 20,
+  simT = 40,
   simΔt = 0.08,
   outΔt = 0.8,
 
   # Wave parameters
-  h0 = 0.4572, #water-depth
+  T = 2, #s
   H = 0.015, # wave height
-  ω = 2*π / 2, #T = 2s
-  k = dispersionRelAng(0.4572, 2*π / 2; msg=true),
+  h0 = 0.4572, #water-depth
+  
   probname = resDir
 )
 

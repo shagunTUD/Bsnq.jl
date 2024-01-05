@@ -1,5 +1,6 @@
 module Bsnq2D
 
+using Revise
 using DrWatson
 @quickactivate "Bsnq.jl"
 
@@ -8,13 +9,13 @@ using Gridap
 using Printf
 using LineSearches: BackTracking
 using CSV
-using Revise
-using WaveSpec.Constants
 using TickTock
+using Bsnq.Constants
+using Bsnq.WaveMaking
 
 export case_setup, default_params
 
-const B = 1/15
+const B = BsnqC
 
 
 function case_setup(params, ha)    
@@ -22,27 +23,7 @@ function case_setup(params, ha)
   @unpack domX, domY, dx, dy = params    
   @unpack simT, simΔt, outΔt = params 
   @unpack probname = params
-  @unpack h0, H, ω, k = params
-
-
-  # ## Water Depth
-  # ha(x) = h0
-  # # function ha(x)
-  # #     if(x[1]<50.0)
-  # #         rha = h
-  # #     elseif(x[1]>100.0)
-  # #         rha = h/2.0
-  # #     else
-  # #         rha = h - h/2.0*(x[1]-50.0)/50.0
-  # #     end
-
-  # #     return rha
-  # # end
-
-  inletη(x, t::Real) = H/2.0*sin(-ω*t)
-  inletη(t::Real) = x -> inletη(x,t)
-  inletP(x, t::Real) = VectorValue(H/2.0*sin(-ω*t)*ω/k, 0.0)
-  inletP(t::Real) = x -> inletP(x,t)
+  @unpack T, H, h0 = params
 
 
   ## Generate Cartesian Domain 2DH 
@@ -64,6 +45,15 @@ function case_setup(params, ha)
   Ω = Interior(model)
   Γ = Boundary(model)
   nΓ = get_normal_vector(Γ)
+
+
+  ## Inlet boundary conditions
+  wv = WaveMaker(T, H, h0; theory = Fourier3())
+  println("Wave-making theory is : ", wv.theory)  
+  inletη(t::Real) = x -> inletη(x, t::Real)
+  inletη(x, t::Real) = WaveInletη(wv, x, t)  
+  inletP(t::Real) = x -> inletP(x, t::Real)
+  inletP(x, t::Real) = WaveInletP(wv, x, t)  
 
 
   ## Define Test Fnc
@@ -155,7 +145,8 @@ function case_setup(params, ha)
 
   # NL Solver    
   nls = NLSolver(show_trace=true, 
-    method=:newton, linesearch=BackTracking(), iterations=10)  
+    method=:newton, linesearch=BackTracking(), 
+    iterations=10, ftol = 1e-5)  
   ode_solver = ThetaMethod(nls, simΔt, 0.5)
   
   solnht = solve(ode_solver, op_AD, x0, t0, simT)    
@@ -165,8 +156,9 @@ function case_setup(params, ha)
   createpvd(probname) do pvd
     wh, ηh, ph = x0
     tval = @sprintf("%5.3f",t0)                
+    tprint = @sprintf("%08d",t0*1000)
     println("Time : $tval")
-    pvd[t0] = createvtk(Ω,probname*"_$tval"*".vtu",
+    pvd[t0] = createvtk(Ω,probname*"_$tprint"*".vtu",
       cellfields=["eta"=>ηh, "P"=>ph, "h"=>-h])
   end
 
@@ -180,6 +172,7 @@ function case_setup(params, ha)
       cnt = cnt+1
       wh, ηh, ph = solh
       tval = @sprintf("%5.3f",t)                
+      tprint = @sprintf("%08d",t*1000)
       println("Time : $tval \t Counter : $cnt")                  
 
       println("-x-x-")
@@ -190,7 +183,7 @@ function case_setup(params, ha)
       if(cnt%outMod != 0) 
         continue
       end
-      pvd[t] = createvtk(Ω,probname*"_$tval"*".vtu",
+      pvd[t] = createvtk(Ω,probname*"_$tprint"*".vtu",
         cellfields=["eta"=>ηh, "P"=>ph, "h"=>-h])
     end
   end    
@@ -218,10 +211,9 @@ Parameters for the VIV.jl module.
   outΔt = 1
 
   # Wave parameters
-  h0 = 1.0 #water-depth
+  T = 10 #s
   H = 0.05 # wave height
-  ω = 2*π / 10 #T = 10s
-  k = dispersionRelAng(h0, ω; msg=true)
+  h0 = 1.0 #water-depth  
 
   probname = datadir("sims_202401","gwce_run","gwce")
 
