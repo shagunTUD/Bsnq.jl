@@ -48,7 +48,8 @@ function case_setup(params, ha)
 
 
   ## Inlet boundary conditions
-  wv = WaveMaker(T, H, h0; theory = Fourier3())
+  wv = WaveMaker(T, H, h0; 
+    theory = Fourier3(), ramp = (0, 2*T))
   println("Wave-making theory is : ", wv.theory)  
   inletη(t::Real) = x -> inletη(x, t::Real)
   inletη(x, t::Real) = WaveInletη(wv, x, t)  

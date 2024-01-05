@@ -48,15 +48,19 @@ struct WaveMaker
   kx::Float64
   ky::Float64
   c::Float64
+
+  #Time ramp
+  ramp::NTuple{2,Float64}
+  rampΔT::Float64
   
 end
 
 function WaveMaker( T::Real, H::Real, h0::Real, 
   ϕ0::Real = 0.0, θDeg::Real = 0.0, x0 = (0.0,0.0); 
-  theory = Airy() )    
+  theory = Airy(), ramp = (-1,-1) )    
 
   WaveMaker( theory, T, H, h0, 
-    ϕ0, θDeg, x0 )
+    ϕ0, θDeg, x0, ramp )
 end  
 
 
@@ -68,6 +72,21 @@ function getPhase(wv::WaveMaker, x, t::Real)
     wv.ϕ0
 
   return ϕ
+end
+
+
+function getRamp(wv::WaveMaker, x, t::Real)
+  if(wv.rampΔT < 1e-4)
+    return 1.0
+  end
+  
+  if(t < wv.ramp[1])
+    return 0.0
+  elseif(t > wv.ramp[2])
+    return 1.0
+  else
+    return 0.5*( 1.0 - cos(π*(t - wv.ramp[1]) / wv.rampΔT) )
+  end
 end
 
 
@@ -94,7 +113,7 @@ struct Airy <: WaveTheory  end
 
 
 function WaveMaker( theory::Airy, T, H, h0, 
-  ϕ0, θDeg, x0 )
+  ϕ0, θDeg, x0, ramp )
   
   θRad = θDeg*π/180.0
   csθ = cos(θRad)
@@ -108,23 +127,28 @@ function WaveMaker( theory::Airy, T, H, h0,
   ky = k * sin(θRad)
   c = L/T
 
+  rampΔT = ramp[2]-ramp[1]
+
   WaveMaker( theory, T, H, h0, ϕ0, θDeg, x0,
-    L, linL, ω, k, kh, θRad, csθ, snθ, kx, ky, c)
+    L, linL, ω, k, kh, θRad, csθ, snθ, kx, ky, c,
+    ramp, rampΔT)
 end
 
 
 function WaveInletη( wv::WaveMaker, theory::Airy, x, t::Real)
   ϕ = getPhase(wv, x, t)    
+  rampT = getRamp(wv, x, t)
 
-  return wv.H/2.0*cos(ϕ)  
+  return wv.H/2.0 * cos(ϕ) * rampT
 end
 
 
 function WaveInletP( wv::WaveMaker, theory::Airy, x, t::Real)
   ϕ = getPhase(wv, x, t)  
+  rampT = getRamp(wv, x, t)
   
   # Integrating from -h to 0
-  pn = wv.H/2.0 * wv.ω / wv.k * cos(ϕ)
+  pn = wv.H/2.0 * wv.c * cos(ϕ) * rampT
 
   # Using Wheeler stretching
   η = WaveInletη( wv, theory, x, t )
@@ -167,7 +191,7 @@ end
 
 
 function WaveMaker( theory::Fourier3, T, H, h0, 
-  ϕ0, θDeg, x0 )
+  ϕ0, θDeg, x0, ramp )
   
   θRad = θDeg*π/180.0
   csθ = cos(θRad)
@@ -210,22 +234,28 @@ function WaveMaker( theory::Fourier3, T, H, h0,
     println("Disp. Regime \t h/L \t ",round.(h0/L; digits=3))
   end
 
+  rampΔT = ramp[2]-ramp[1]
+
   WaveMaker( Fourier3(coefG2, coefG3, α1, α2, α3), 
     T, H, h0, ϕ0, θDeg, x0,
-    L, linL, ω, k, kh, θRad, csθ, snθ, kx, ky, c)
+    L, linL, ω, k, kh, θRad, csθ, snθ, kx, ky, c,
+    ramp, rampΔT)
 end
 
 
 function WaveInletη( wv::WaveMaker, theory::Fourier3, x, t::Real)
   ϕ = getPhase(wv, x, t)  
+  rampT = getRamp(wv, x, t)
   
-  return wv.theory.α1*cos(ϕ) + wv.theory.α2*cos(2.0*ϕ) + 
-    wv.theory.α3*cos(3.0*ϕ)
+  return rampT * ( wv.theory.α1*cos(ϕ) + 
+    wv.theory.α2*cos(2.0*ϕ) + wv.theory.α3*cos(3.0*ϕ) )
 end
 
 
 function WaveInletP( wv::WaveMaker, theory::Fourier3, x, t::Real)
   
+  # Phase and time ramp already included in η calculation 
+
   η = WaveInletη( wv, theory, x, t )
   pn = η * wv.c
 
