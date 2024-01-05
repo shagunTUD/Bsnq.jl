@@ -6,7 +6,6 @@ include(srcdir("BsnqParams.jl"))
 
 using Parameters
 using TimerOutputs
-using WaveSpec.Constants
 #using .Bsnq2D
 
 const to = TimerOutput()
@@ -40,6 +39,10 @@ params = Bsnq2D.default_params(
   T = 2, #s
   H = 0.015, # wave height
   h0 = 0.4572, #water-depth
+
+  # Sponge layer
+  # (nx, ny, cx, cy, len, T)
+  absx = (1.0, 0.0, 30.0, 0.0, 6.576, 2.0),
   
   probname = resDir
 )

@@ -24,6 +24,7 @@ function case_setup(params, ha)
   @unpack simT, simΔt, outΔt = params 
   @unpack probname = params
   @unpack T, H, h0 = params
+  @unpack absx = params
 
 
   ## Generate Cartesian Domain 2DH 
@@ -35,9 +36,9 @@ function case_setup(params, ha)
 
   ## Label sides of the domain
   labels = get_face_labeling(model)
-  add_tag_from_tags!(labels, "inlet", ["tag_7","tag_1","tag_3"])
-  add_tag_from_tags!(labels, "outlet", ["tag_8","tag_2","tag_4"])
-  add_tag_from_tags!(labels, "sideWall", ["tag_5","tag_6"])
+  add_tag_from_tags!(labels, "Inlet", ["tag_7","tag_1","tag_3"])
+  add_tag_from_tags!(labels, "Outlet", ["tag_8","tag_2","tag_4"])
+  add_tag_from_tags!(labels, "SideWall", ["tag_5","tag_6"])
   writevtk(model, probname*"_model")
 
 
@@ -45,6 +46,33 @@ function case_setup(params, ha)
   Ω = Interior(model)
   Γ = Boundary(model)
   nΓ = get_normal_vector(Γ)
+
+
+  ## Sponge domain
+  # ---------------------Start---------------------
+  absc = VectorValue( absx[3], absx[4] )
+  absn = VectorValue( absx[1], absx[2] )  
+  absCoef = 30.0 / absx[6] / (exp(1.0) - 1.0)
+  function mapSpongeLayer(xs)
+    n = length(xs)
+    x = 1/n*sum(xs)    
+
+    (x - absc)⋅absn > 0.0
+  end
+  
+  xΩ = get_cell_coordinates(Ω)
+  Ωd_to_Ω = lazy_map(mapSpongeLayer, xΩ)    
+  Ωd = Triangulation( Ω, Ωd_to_Ω )
+  writevtk(Ωd,probname*"_model"*"_Od")
+  
+  function spngFnc(x)
+    dx = ( (x - absc)⋅absn ) / absx[5]
+    dx = min( max( 0.0, dx ), 1.0 )
+
+    return absCoef * ( exp(dx*dx) - 1.0 )
+  end
+  # ----------------------End----------------------
+
 
 
   ## Inlet boundary conditions
@@ -66,14 +94,14 @@ function case_setup(params, ha)
     conformity=:H1)
 
   Ψη = TestFESpace(Ω, reffeη, 
-    conformity=:H1, dirichlet_tags=["inlet"])
+    conformity=:H1, dirichlet_tags=["Inlet"])
   
   ordP = 2
   reffeP = ReferenceFE(lagrangian, VectorValue{2,Float64}, ordP)
   
   ΨP = TestFESpace(Ω, reffeP, 
     conformity=:H1, 
-    dirichlet_tags=["inlet", "outlet","sideWall"],
+    dirichlet_tags=["Inlet", "Outlet","SideWall"],
     dirichlet_masks=[(true,false), (true,false), (false,true)])
   # ----------------------End----------------------
 
@@ -102,6 +130,7 @@ function case_setup(params, ha)
 
   ## Define measures
   dΩ = Measure(Ω, 2*ordP)
+  dΩd = Measure(Ωd, 2*ordP)
   dΓ = Measure(Γ, 2*ordP)
 
   ## Weak form    
@@ -125,7 +154,8 @@ function case_setup(params, ha)
     ∫( -(B + 1/3) * ( ψp * h*h * (∇⋅∂t(p)) ) ⋅ nΓ )dΓ + 
     ∫( (2*B + 1/2) * ( ψp ⋅ ( h * (∇⋅∂t(p)) * ∇(h) ) ) )dΩ + 
     ∫( (-1/6) * ( ψp ⋅ (∇(∂t(p))⋅∇(h)) ) )dΩ +
-    ∫( -B*g * ψp ⋅ (h*h*∇(w)) )dΩ
+    ∫( -B*g * ψp ⋅ (h*h*∇(w)) )dΩ + 
+    ∫( ψη * η * spngFnc + (ψp ⋅ p) * spngFnc )dΩd
 
         
   op_AD = TransientFEOperator(res, X, Y)    
@@ -202,7 +232,7 @@ Parameters for the VIV.jl module.
 
 @with_kw struct default_params
 
-  domX = (0,300)  
+  domX = (0,50)  
   domY = (0,10)
   dx = 2.5
   dy = 2.5
@@ -212,9 +242,13 @@ Parameters for the VIV.jl module.
   outΔt = 1
 
   # Wave parameters
-  T = 10 #s
+  T = 2 #s
   H = 0.05 # wave height
   h0 = 1.0 #water-depth  
+
+  # Sponge layer
+  # (nx, ny, cx, cy, len, T)
+  absx = (1.0, 0.0, 30.0, 0.0, 20, 2)
 
   probname = datadir("sims_202401","gwce_run","gwce")
 
