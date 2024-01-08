@@ -25,7 +25,6 @@ Manifest.toml
 
 # Other files
 *.jld2
-*.png
 *.vtu
 *.pvd
 *.vscode
@@ -34,3 +33,4 @@ Manifest.toml
 # Folders
 output/
 sims_*/
+.ipynb_checkpoints/
