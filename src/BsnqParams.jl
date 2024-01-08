@@ -12,6 +12,7 @@ using CSV
 using TickTock
 using Bsnq.Constants
 using Bsnq.WaveMaking
+using GridapGmsh
 
 export case_setup, default_params
 
@@ -40,6 +41,10 @@ function case_setup(params, ha)
   add_tag_from_tags!(labels, "Outlet", ["tag_8","tag_2","tag_4"])
   add_tag_from_tags!(labels, "SideWall", ["tag_5","tag_6"])
   writevtk(model, probname*"_model")
+
+
+  # model = DiscreteModelFromFile(datadir("Mesh","Whalin","whalin_2032.msh"))  
+  # writevtk(model, probname*"_model")
 
 
   ## Domains
@@ -129,9 +134,10 @@ function case_setup(params, ha)
   
 
   ## Define measures
-  dΩ = Measure(Ω, 2*ordP)
-  dΩd = Measure(Ωd, 2*ordP)
-  dΓ = Measure(Γ, 2*ordP)
+  meas = 2*ordP
+  dΩ = Measure(Ω, meas)
+  dΩd = Measure(Ωd, meas)
+  dΓ = Measure(Γ, meas)
 
   ## Weak form    
   # ---------------------Start---------------------
@@ -141,22 +147,40 @@ function case_setup(params, ha)
   conv2(p, td) = 1.0/td*(∇⋅p) - 1.0/(td*td)*(p⋅∇(td))
 
 
-  # Residual
+  # # Residual 1508
+  # res(t, (w, η, p), (ψw, ψη, ψp)) =
+  #   ∫( w*ψw + ∇(ψw) ⋅ (h*∇(η)) )dΩ +
+  #   ∫( -ψw * h * ∇(η)⋅nΓ )dΓ +
+  #   ∫( ∂t(η)*ψη + (∇⋅p)*ψη )dΩ + 
+  #   ∫( ∂t(p)⋅ψp + 
+  #     ψp ⋅ (∇(p)'⋅p) / (h+η) + #convec-part1
+  #     ψp ⋅ (conv2(p,(h+η)) * p) + #convec-part2
+  #     g * (h+η) * (ψp⋅∇(η)) )dΩ + 
+  #   ∫( (B + 1/3) * ( (∇⋅ψp) * h*h * (∇⋅∂t(p)) ) )dΩ + 
+  #   ∫( -(B + 1/3) * ( ψp * h*h * (∇⋅∂t(p)) ) ⋅ nΓ )dΓ + 
+  #   ∫( (2*B + 1/2) * ( ψp ⋅ ( h * (∇⋅∂t(p)) * ∇(h) ) ) )dΩ + 
+  #   ∫( (-1/6) * ( ψp ⋅ (∇(∂t(p))⋅∇(h)) ) )dΩ +
+  #   ∫( -B*g * ψp ⋅ (h*h*∇(w)) )dΩ + 
+  #   ∫( ψη * η * spngFnc + (ψp ⋅ p) * spngFnc )dΩd
+
+  
+  # Residual 1416
   res(t, (w, η, p), (ψw, ψη, ψp)) =
-    ∫( w*ψw + ∇(ψw) ⋅ (h*∇(η)) )dΩ +
-    ∫( -ψw * h * ∇(η)⋅nΓ )dΓ +
-    ∫( ∂t(η)*ψη + (∇⋅p)*ψη )dΩ + 
-    ∫( ∂t(p)⋅ψp + 
-      ψp ⋅ (∇(p)'⋅p) / (h+η) + #convec-part1
-      ψp ⋅ (conv2(p,(h+η)) * p) + #convec-part2
-      g * (h+η) * (ψp⋅∇(η)) )dΩ + 
+    ∫( ∂t(η)*ψη )dΩ +
+    ∫( ∂t(p)⋅ψp )dΩ +
     ∫( (B + 1/3) * ( (∇⋅ψp) * h*h * (∇⋅∂t(p)) ) )dΩ + 
     ∫( -(B + 1/3) * ( ψp * h*h * (∇⋅∂t(p)) ) ⋅ nΓ )dΓ + 
     ∫( (2*B + 1/2) * ( ψp ⋅ ( h * (∇⋅∂t(p)) * ∇(h) ) ) )dΩ + 
     ∫( (-1/6) * ( ψp ⋅ (∇(∂t(p))⋅∇(h)) ) )dΩ +
+    ∫( w*ψw + ∇(ψw) ⋅ (h*∇(η)) )dΩ +
+    ∫( -ψw * h * ∇(η)⋅nΓ )dΓ +
+    ∫( (∇⋅p)*ψη )dΩ + 
+    ∫( ψp ⋅ (∇(p)'⋅p) / (h+η) )dΩ + #convec-part1
+    ∫( ψp ⋅ (conv2(p,(h+η)) * p) )dΩ + #convec-part2
+    ∫( g * (h+η) * (ψp⋅∇(η)) )dΩ +     
     ∫( -B*g * ψp ⋅ (h*h*∇(w)) )dΩ + 
-    ∫( ψη * η * spngFnc + (ψp ⋅ p) * spngFnc )dΩd
-
+    ∫( ψη * η * spngFnc )dΩd + ∫( (ψp ⋅ p) * spngFnc )dΩd
+  
         
   op_AD = TransientFEOperator(res, X, Y)    
   # ----------------------End----------------------
@@ -176,9 +200,13 @@ function case_setup(params, ha)
 
   # NL Solver    
   nls = NLSolver(show_trace=true, 
-    method=:newton, linesearch=BackTracking(), 
+    method=:newton, linesearch=BackTracking(),
     iterations=10, ftol = 1e-5)  
+  # nls = NLSolver(LUSolver(), show_trace=true, 
+  #   method=:newton, linesearch=BackTracking(),
+  #   iterations=10, ftol = 1e-5)  
   ode_solver = ThetaMethod(nls, simΔt, 0.5)
+  # ode_solver = RungeKutta(nls, nls, simΔt, :BE_1_0_1)
   
   solnht = solve(ode_solver, op_AD, x0, t0, simT)    
   # ----------------------End----------------------

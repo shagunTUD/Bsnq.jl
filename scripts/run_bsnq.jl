@@ -28,11 +28,11 @@ params = Bsnq2D.default_params(
 
   domX = (0,36.576),
   domY = (0,6.096),
-  dx = 0.2032,
-  dy = 0.2032,
+  dx = 0.2032, #0.2032,
+  dy = 0.2032, #0.2032,
 
   simT = 40,
-  simΔt = 0.08,
+  simΔt = 0.08, #0.08,
   outΔt = 0.8,
 
   # Wave parameters
